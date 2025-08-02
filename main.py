@@ -1,6 +1,7 @@
 import os
 import json
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -83,6 +84,28 @@ async def search_similar_cache(redis_client: redis.Redis, embedding: List[float]
         return None
 
 
+async def save_to_cache(redis_client: redis.Redis, query: str, embedding: List[float], response: str) -> None:
+    """Save query, embedding, and response to Redis cache"""
+    try:
+        # Generate UUID for cache key
+        cache_key = f"cache:{uuid.uuid4()}"
+        
+        # Create cache document
+        cache_doc = {
+            "query": query,
+            "embedding": embedding,
+            "response": response,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Store using RedisJSON
+        redis_client.json().set(cache_key, "$", cache_doc)
+        print(f"Saved to cache with key: {cache_key}")
+        
+    except Exception as e:
+        print(f"Cache save error: {e}")
+
+
 @app.post("/ask", response_model=QueryResponse)
 async def ask(request: QueryRequest):
     try:
@@ -93,14 +116,20 @@ async def ask(request: QueryRequest):
         cached_result = await search_similar_cache(app.state.redis, embedding, 0.85)
         
         if cached_result:
+            # Cache hit - return cached response
             return QueryResponse(
                 response=cached_result["response"],
                 from_cache=True
             )
         else:
-            # No cache hit, return dummy response
+            # No cache hit - generate dummy response and save to cache
+            dummy_response = "dummy response"
+            
+            # Save to cache for future use
+            await save_to_cache(app.state.redis, request.query, embedding, dummy_response)
+            
             return QueryResponse(
-                response="dummy response",
+                response=dummy_response,
                 from_cache=False
             )
     

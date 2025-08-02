@@ -173,7 +173,11 @@ Thumbs.db
 # API Keys and Secrets
 *.key
 *.pem
-.env.local
-.env.production
-.env.staging
+.env*
 env.sh
+env.local.sh
+*.local.*
+
+# Log files
+semantic_cache.log
+*.log
